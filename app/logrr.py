@@ -34,20 +34,19 @@ import os
 
 c = Config.get_instance()
 
-
-# Global variable to hold the table's state
-log_table = []
-
+# Custom theme for the rich console
 custom_theme = Theme(
     {
+        'default': 'bright_white',
         'info': 'bright_white',
         'error': 'bold italic red',
         'debug': 'orange1',
+        'warning': 'bright_yellow',
         'webhook': 'orange1',
-        'webex': 'blue',
         'env': 'aquamarine1',
         'success': 'bright_green',
-
+        'meraki': 'bright_green',
+        'webex': 'blue',
     }
 )
 
@@ -101,15 +100,15 @@ class LoggerManager:
         self.logger.propagate = False
         self.lock = Lock()
 
-    def tsp(self, *args, **kwargs):
+    def tsp(self, *args, style="default", **kwargs):
         """Thread safe print."""
         with self.lock:
-            self.console.print(*args, **kwargs)
+            self.console.print(*args, style=style, **kwargs)
 
     def pp(self, *args, **kwargs):
         """ Pretty printing json with thread safe print. """
         pretty = Pretty(locals())
-        self.tsp(*args)  # Spread the args
+        self.tsp(*args, **kwargs)  # Spread the args
 
     def lnp(self, message, style="info", level="info"):
         """ Log n' print the message
@@ -253,7 +252,7 @@ class LoggerManager:
         return table
 
     def print_start_panel(self, app_name=c.APP_NAME):
-        self.lnp(Panel.fit(f'[bold bright_white]{app_name}[/bold bright_white]', title='Start', style='webex'))
+        self.lnp(Panel.fit(f'[bold bright_white]{app_name}[/bold bright_white]', title='Start', style='meraki'))
 
     def print_finished_panel(self):
         # Mostly used for non-flask apps

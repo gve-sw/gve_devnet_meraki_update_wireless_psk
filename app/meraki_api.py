@@ -22,6 +22,7 @@ import time
 import threading
 from typing import Optional, ClassVar, List, Dict, Any
 
+
 c = Config.get_instance()
 
 
@@ -40,7 +41,6 @@ class MerakiOps:
         self.dashboard = None
         self._initialized = False
         self.initialize_dashboard()
-        self.psk_number = 2
 
     def initialize_dashboard(self):
         """Initialize the Meraki Dashboard API with the provided API key."""
@@ -95,25 +95,16 @@ class MerakiOps:
         organization, it selects that organization automatically. Exits the script if
         the organization is not found or if there's an error fetching the organizations.
         """
-
-        # with lm.console.status("[bold green]Fetching Meraki Organizations....", spinner="dots"):
-        #     try:
-        #         orgs = self.dashboard.organizations.getOrganizations()
-        #     except APIError as e:
-        #         lm.tsp(f"Failed to fetch organizations. Error: {e.message['errors'][0]}")
-        #         sys.exit(1)
         lm.p_panel("Fetching Meraki organizations...", style="green")
         with lm.console.status("[bold green]Fetching Meraki Organizations....", spinner="dots"):
             orgs = self.get_orgs()
 
-        # lm.tsp("[bold bright_green]Connected to Meraki dashboard!")
         lm.pp(f"Found {len(orgs)} organization(s).")
 
-        # If one org, return early
-        if len(orgs) == 1:
+        if len(orgs) == 1:  # If one org, return early
             lm.pp(f"Working with Org: {orgs[0]['name']}\n")
             return orgs[0]["id"]
-        org_names = [org["name"] for org in orgs]
+        org_names = [org["name"] for org in orgs]  # Extract org names for user selection
         lm.pp("Available organizations:")
         for org in orgs:
             lm.tsp(f"- {org['name']}")
@@ -134,18 +125,20 @@ class MerakiOps:
         """
         Collect existing Meraki network names / IDs
         """
-        # lm.p_panel("[bold bright_green]Retrieving Network(s) Information[/bold bright_green]", title="Step 3")
-        # Fetching the networks before applying any filter.
         networks = self.dashboard.organizations.getOrganizationNetworks(organizationId=org_id)
         # lm.pp(f"Available networks {networks}")
         return networks
 
-    def update_ssid_by_num_for_tagged_networks(self, new_psk: str, org_id: str):
+    def update_ssid_by_num_for_tagged_networks(self, new_psk: str, org_id: str, mr_ssid_number: int = 2, mx_ssid_number: int = 2):
         """
         Update SSID settings for networks tagged with 'GuestPSK' or 'MX-WGuestPSK'.
         """
-        successful_updates = []
-        failed_updates = []
+        mr_successful_updates = []
+        mx_successful_updates = []
+        mr_failed_updates = []
+        mx_failed_updates = []
+
+        # Fetch all networks within the organization
         all_networks = self.get_networks(org_id=org_id)
 
         # Retrieve & loop through all networks within the organization
@@ -153,44 +146,60 @@ class MerakiOps:
             network_id = network['id']
             network_tags = network.get('tags', [])
 
-            # Handle networks tagged 'GuestPSK'
-            if 'MX-GuestPSK' or 'Test' in network_tags:
+            # Handle networks tagged 'MX-GuestPSK' (MR wireless)
+            if 'MX-GuestPSK' in network_tags:
                 try:
-                    lm.pp(f"Changing PSK for network: {network_id} with tag 'GuestPSK': {new_psk}")
-                    self.dashboard.wireless.updateNetworkWirelessSsid(network_id, number=self.psk_number, psk=new_psk)
-                    update_result = f"Updated Wireless SSID for '{network['name']}' with ID '{network_id}'"
-                    successful_updates.append(update_result)
+                    lm.pp(f"Changing PSK for MR SSID number {mr_ssid_number} for MR wireless with network id: {network_id} with network tag 'MX-GuestPSK': {new_psk}")
+                    self.dashboard.wireless.updateNetworkWirelessSsid(network_id, number=mr_ssid_number, psk=new_psk)
+                    mr_update_result = f"Updated PSK for MR Wireless SSID number {mr_ssid_number} for '{network['name']}' with network ID '{network_id}'"
+                    mr_successful_updates.append(mr_update_result)
                 except Exception as e:
-                    update_result = f"Failed to update Wireless SSID for '{network['name']}': {e}"
-                    failed_updates.append(update_result)
+                    update_result = f"Failed to update PSK for MR Wireless SSID number {mr_ssid_number} for '{network['name']}' with network ID '{network_id}': {e}"
+                    mr_failed_updates.append(update_result)
 
-            # Handle networks tagged 'MX-WGuestPSK'
-            elif 'MXW-GuestPSK' in network_tags:
+            # Handle networks tagged 'MX-WGuestPSK' (MX Wireless)
+            if 'MXW-GuestPSK' in network_tags:
                 try:
-                    lm.pp(f"Changing PSK for network: {network_id} with tag 'MX-WGuestPSK': {new_psk}")
-                    self.dashboard.appliance.updateNetworkApplianceSsid(network_id, number=self.psk_number, psk=new_psk)
-                    update_result = f"Updated Appliance SSID for '{network['name']}' with ID '{network_id}'"
-                    successful_updates.append(update_result)
+                    lm.pp(f"Changing PSK for MX-W Appliance SSID number {mx_ssid_number} with network id: {network_id} with network tag 'MX-WGuestPSK': {new_psk}")
+                    self.dashboard.appliance.updateNetworkApplianceSsid(network_id, number=mx_ssid_number, psk=new_psk)
+                    mx_update_result = f"Updated PSK for Appliance (MX) SSID number {mx_ssid_number} for '{network['name']}' with network ID '{network_id}'"
+                    mr_successful_updates.append(mx_update_result)
                 except Exception as e:
-                    update_result = f"Failed to update Appliance SSID for '{network['name']}': {e}"
-                    failed_updates.append(update_result)
-            # For saving to file & sending update summary to Webex
-            message = "SSID Update Summary:\n\n"
-            if successful_updates:
-                message += "Successful Updates:\n" + "\n".join(successful_updates) + "\n\n"
-                lm.pp(successful_updates)
-            if failed_updates:
-                message += "Failed Updates:\n" + "\n".join(failed_updates)
-                lm.pp(failed_updates)
+                    update_result = f"Failed to update PSK for Appliance (MX) SSID number {mx_ssid_number} for '{network['name']}' with network ID '{network_id}': {e}"
+                    mr_failed_updates.append(update_result)
 
-        return successful_updates, failed_updates
+        # Combine the successful updates
+        all_successful_updates = mr_successful_updates + mx_successful_updates
+
+        # Check if there are any successful updates for MR and MX
+        if mr_successful_updates or mx_successful_updates:
+            # Print the combined successful updates
+            if all_successful_updates:
+                message = "[bright_green]Successful Updates:[/bright_green]\n" + "\n".join(all_successful_updates) + "\n\n"
+                lm.pp(message)
+
+        # Combine the failed updates
+        all_failed_updates = mr_failed_updates + mx_failed_updates
+
+        # Check if there are any failed updates for MR and MX
+        if mr_failed_updates or mx_failed_updates:
+            # Print the combined failed updates
+            if all_failed_updates:
+                message = "[bright_red]Failed Updates:[/bright_red]\n" + "\n".join(all_failed_updates) + "\n\n"
+                lm.pp(message)
+
+        return all_successful_updates, all_failed_updates
 
     def fetch_ssids(self, network_id: str, network_type: str):
-        """Fetch SSIDs for a network, given its type ('mrw' or 'mxw')."""
+        """Fetch SSIDs for a network, given its type ('mrw' or 'mxw' or 'both')."""
         if network_type == 'mrw':
-            return self.dashboard.wireless.getNetworkWirelessSsids(network_id)
+            return self.dashboard.wireless.getNetworkWirelessSsids(networkId=network_id)
         elif network_type == 'mxw':
-            return self.dashboard.appliance.getApplianceWireless(network_id=network_id)
+            return self.dashboard.appliance.getNetworkApplianceSsids(networkId=network_id)
+        elif network_type == 'both':
+            mr_ssids = self.dashboard.wireless.getNetworkWirelessSsids(networkId=network_id)
+            mx_ssid = self.dashboard.appliance.getNetworkApplianceSsids(networkId=network_id)
+            return mr_ssids, mx_ssid
         else:
             raise ValueError("Unsupported network type")
 
@@ -269,4 +278,3 @@ class MerakiOps:
             lm.tsp(f"[bold green]PSK update operation completed successfully for SSID: '{ssid_name}'.[/bold green]")
         else:
             lm.tsp(f"[bold red]Error: The PSK update operation failed for SSID: '{ssid_name}'. Please check the network type and SSID name.[/bold red]")
-

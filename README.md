@@ -2,6 +2,9 @@
 This application utilizes the Meraki API to efficiently manage and update Cisco Meraki network SSID PSKs across multiple networks simultaneously. 
 It employs Typer, offering an intuitive command-line interface for various options and functionalities. 
 Specifically, it targets networks tagged with specific identifiers, allowing selective updates to wireless SSIDs, including password changes. 
+It includes the ability to list organizations, networks, and SSIDs, as well as update SSID PSKs for a specific SSID within a single network.
+It provides the capability to update PSKs for MR and MX wireless networks through separate API calls.
+Additionally, it provides the option to set up Webex notifications for script executions, allowing for real-time updates on the script's progress and results.
 This capability is vital for maintaining secure and efficient network operations, particularly in environments requiring frequent updates to wireless access credentials.
 
 ## Contacts
@@ -11,7 +14,8 @@ This capability is vital for maintaining secure and efficient network operations
 ## Solution Components
 * [Meraki API](https://developer.cisco.com/meraki/api-v1/)
 * [Typer](https://typer.tiangolo.com/)
-* Meraki Wireless
+* Meraki MR Wireless
+* Meraki MX Wireless
 
 
 ## Prerequisites
@@ -48,12 +52,13 @@ I encourage the use of the --help flag:
 python main.py --help
 python main.py update_psk-tagged-networks --help
 ```
+
 ### Update SSID PSKs Across Tagged Networks
 To update the PSKs for networks tagged with specific identifiers, use the following command:
 ```
 python main.py update_psk-tagged-networks
 ```
-*Note: This targets SSID number 3 accross all networks in the Meraki Organization.
+*Note: This targets SSID number 3 accross all networks in the Meraki Organization. You can change this by using the --psk_number flag.*
 
 ### List Organizations
 To list all Meraki organizations accessible with your API key, use the following command:

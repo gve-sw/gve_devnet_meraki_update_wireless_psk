@@ -69,14 +69,14 @@ class EnvironmentManager:
                     self.reload_config()
                     if callback:
                         callback()  # Reload configuration after setting
-                    lm.pp(f"{var_name} is set and valid.", style="success")
+                    lm.lnp(f"{var_name} is set and valid.", style="success")
                     break
                 else:
-                    lm.pp(f"Invalid value for {var_name}. Please try again.", style="error")
+                    lm.lnp(f"Invalid value for {var_name}. Please try again.", style="error")
             else:
                 if callback:
                     callback()  # Optionally reload configuration if needed
-                lm.pp(f"{var_name} is already set and valid.", style="success")
+                lm.lnp(f"{var_name} is already set and valid.", style="success")
                 break
 
     def set_env_var(self, var_name: str, var_value: str, callback=None):

@@ -22,7 +22,7 @@ from meraki_api import MerakiOps
 from env_manager import EnvironmentManager
 from funcs import generate_reports
 
-ENV_PATH = Path(__file__).parent / 'config' / '.env'
+
 env_manager = EnvironmentManager.get_instance()
 c = Config.get_instance()
 
@@ -32,6 +32,7 @@ app = typer.Typer()
 
 def common_setup():
     env_manager.create_and_load_env_if_missing()
+    lm.print_start_panel(c.APP_NAME)
     env_manager.ensure_meraki_api_key_set(callback=env_manager.reload_config)
 
 
@@ -43,38 +44,25 @@ def main_callback():
     common_setup()
 
 
-def run_psk_change(psk: str, send_webex_message: bool):
+def run_psk_change(psk: str, mr_ssid_number: int, mx_ssid_number: int, send_webex_message: bool):
     """
     Executes the PSK change across Meraki networks based on predefined tags.
     Optionally sends a Webex message with the outcome.
     """
     meraki_ops = MerakiOps.get_instance()
     org_id = meraki_ops.get_org_id()
-    successful_updates, failed_updates = meraki_ops.update_ssid_by_num_for_tagged_networks(new_psk=psk, org_id=org_id)
+    successful_updates, failed_updates = meraki_ops.update_ssid_by_num_for_tagged_networks(
+        new_psk=psk,
+        org_id=org_id,
+        mr_ssid_number=mr_ssid_number,
+        mx_ssid_number=mx_ssid_number)
+
     if successful_updates or failed_updates:
-        success_file, failure_file = generate_reports(successful_updates, failed_updates)  # Implement this function to generate report files
+        success_file, failure_file = generate_reports(successful_updates, failed_updates)  # Generate reports
 
         if send_webex_message:
             webex_bot = WebexBot.get_instance()
             webex_bot.send_webex_message("PSK Change Report", [success_file, failure_file])  # Ensure webex_api is properly initialized and configured
-
-
-def psk_prompt(psk: Optional[str] = None, send_webex_message: bool = False):
-    """
-    Prompts the user for a PSK and executes the PSK change across networks.
-    Optionally sends a notification to a Webex room with the results.
-
-    Args:
-        psk (Optional[str], optional): The PSK to apply. Will prompt if not provided.
-        send_webex_message (bool, optional): Whether to send a Webex notification.
-    """
-    if not psk:
-        psk = typer.prompt("Please enter a PSK to run the PSK change")
-    lm.pp(f"The PSK you entered is: {psk}")
-    if typer.confirm("Continue with changing across networks?"):
-        run_psk_change(psk=psk, send_webex_message=send_webex_message)
-    else:
-        lm.tsp("PSK change aborted.", style="error")
 
 
 def handle_network_id_input(meraki_ops):
@@ -200,12 +188,23 @@ def webex_run_meraki_psk_change(
 
 
 @app.command()
-def update_psk_tagged_networks(psk: str = typer.Argument(None, help="The PSK to use for the change. Will be prompted if left blank.")):
+def update_psk_tagged_networks(
+        psk: str = typer.Argument(None, help="The PSK to use for the change. Will be prompted if left blank."),
+        mr_ssid_number: int = typer.Option(2, help="The MR SSID number to change. Defaults to 2 if left blank."),
+        mx_ssid_number: int = typer.Option(2, help="The MX SSID number to change. Defaults to 2 if left blank.")
+):
     """
-    Updates the PSK for all mrw & mxw network types with tag "GuestPSK" across all networks in a Meraki Organization. If API key or PSK left blank, the user will be prompted.
+    Updates the PSK for all MR Wireless (mrw) networks with network tag "MX-GuestPSK and MX Wireless (mwx) networks with tag "MXW-GuestPSK"
+    across all networks in a Meraki Organization.
+    If API key or PSK left blank, the user will be prompted.
     """
+    lm.pp(f"The ssid_number you will be targeting across Meraki MR wireless networks is {mr_ssid_number}, which corresponds to the third SSID in the list due to zero-based "
+          f"indexing.\n")
+    lm.pp(f"The ssid_number you will be targeting across Meraki MX wireless networks is {mx_ssid_number}, which corresponds to the 2nd SSID in the list as MX does NOT use zero-based "
+          f"indexing.\n")
+    lm.pp("If you'd like to change the SSID number that you are targeting, provide it as an argument '--psk_number' when running the command.\n")
     psk = psk or typer.prompt("Please enter a PSK to run the PSK change")
-    run_psk_change(psk=psk, send_webex_message=False)
+    run_psk_change(psk=psk, mr_ssid_number=mr_ssid_number, mx_ssid_number=mx_ssid_number, send_webex_message=False)
 
 
 @app.command()
@@ -238,21 +237,30 @@ def list_networks(org_id: str):
 
 
 @app.command()
-def list_ssids(network_id: str, network_type: str = "mrw"):
+def list_ssids(network_id: str, nt: str = "mrw"):
     """
-    Lists all SSIDs for a given network and type ('mrw' for wireless, 'mxw' for appliance).
+    Lists all SSIDs for a given network and type (nt = network_type; 'mrw' for wireless, 'mxw' for appliance, 'both' for both.).
     """
     meraki_ops = MerakiOps.get_instance()
     try:
-        ssids = meraki_ops.fetch_ssids(network_id, network_type)
-        if ssids:
-            typer.echo(f"SSIDs in Network ID {network_id}:")
-            for ssid in ssids:
+        mr_ssids, mx_ssids = meraki_ops.fetch_ssids(network_id, nt)
+        if mr_ssids:
+            typer.echo(f"MR Wireless SSIDs in Network ID {network_id}:")
+            for ssid in mr_ssids:
                 typer.echo(f"- Number: {ssid['number']}, Name: {ssid['name']}")
         else:
             typer.echo(f"No SSIDs found or unable to list SSIDs for network ID {network_id}.")
+        if mx_ssids:
+            typer.echo(f"MX Wireless ssids with Network ID {network_id}:")
+            for ssid in mx_ssids:
+                typer.echo(f"- Number: {ssid['number']}, Name: {ssid['name']}")
+            else:
+                typer.echo(f"No SSIDs found or unable to list SSIDs for network ID {network_id}.")
     except ValueError as e:
         typer.echo(str(e))
+    except Exception as e:
+        typer.echo(f"Failed to list SSIDs.")
+        lm.print_inspect_info(e)
 
 
 @app.command()
@@ -264,8 +272,11 @@ def update_ssid_psk(
         network_type: Optional[str] = typer.Option("mrw", "--type", help="Network type: 'mrw' for MR wireless, 'mxw' for MX appliance wireless.")
 ):
     """
-    Update the PSK for a specific SSID by its name or number within a single network. If both name and number are provided,
-    the update defaults to using ssid number.
+    Updates the PSK for a specified SSID in a Meraki network.
+    If the SSID name is provided, the SSID number is ignored.
+    If neither is provided, the user will be prompted.
+    If the PSK and network type are not provided, the user will be prompted.
+    The network type must be 'mrw' for MR wireless networks or 'mxw' for MX appliance wireless networks.
     """
 
     meraki_ops = MerakiOps.get_instance()

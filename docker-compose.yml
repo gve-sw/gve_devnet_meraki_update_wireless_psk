@@ -8,5 +8,3 @@ services:
       context: ./app
       dockerfile: Dockerfile
     restart: always
-    ports:
-      - "8000:8000"

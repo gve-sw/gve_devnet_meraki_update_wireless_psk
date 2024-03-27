@@ -37,7 +37,7 @@ class Config(BaseSettings):
     README_PATH: ClassVar[str] = str(DIR_PATH / 'README.md')
 
     # App Settings
-    APP_NAME: ClassVar[str] = "Meraki Monthly PSK Rotation"
+    APP_NAME: ClassVar[str] = "Meraki PSK Change App"
     APP_VERSION: ClassVar[str] = "1.0"
     LOGGER_LEVEL: ClassVar[str] = 'DEBUG'
 
